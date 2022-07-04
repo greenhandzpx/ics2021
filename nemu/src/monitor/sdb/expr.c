@@ -37,7 +37,7 @@ static struct rule {
   {"&&", TK_AND},       // &&
   {" +", TK_NOTYPE},    // spaces
   {"==", TK_EQ},        // equal
-  {"\\$..|\\$s10|\\$s11", TK_REG}
+  {"\\$0|\\$..|\\$s10|\\$s11", TK_REG}
 };
 
 #define NR_REGEX ARRLEN(rules)
@@ -156,6 +156,7 @@ static bool make_token(char *e) {
               strncpy(tokens[nr_token].str, substr_start, substr_len);
             }
             ++nr_token;
+            break;
           case TK_NOTYPE:
             break;
           default: TODO();
@@ -271,16 +272,24 @@ uint32_t eval(int left, int right) {
       i = k;
       continue;
     }
-    if (tokens[i].type == '+' || tokens[i].type == '-') {
+    if (tokens[i].type == TK_AND) {
+      op_type = tokens[i].type;
+      level = 11;
+      loc = i;
+    } else if (level <= 7 && tokens[i].type == TK_EQ) {
+      op_type = tokens[i].type;
+      level = 7;
+      loc = i;
+    } else if (level <= 4 && (tokens[i].type == '+' || tokens[i].type == '-')) {
       // we should set the last lowest level operator as main operator
       op_type = tokens[i].type;
       level = 4;
       loc = i;
-    } else if (level < 4 && (tokens[i].type == '*' || tokens[i].type == '/')) {
+    } else if (level <= 3 && (tokens[i].type == '*' || tokens[i].type == '/')) {
       op_type = tokens[i].type;
       level = 3;
       loc = i; 
-    } else if (level < 3 && tokens[i].type == TK_DEREF) {
+    } else if (level <= 2 && tokens[i].type == TK_DEREF) {
       op_type = tokens[i].type;
       level = 2;
       loc = i; 
@@ -308,6 +317,10 @@ uint32_t eval(int left, int right) {
       uint32_t* host_addr = (uint32_t*)guest_to_host(val2);
       Log("deref: addr:%u, val:%u", val2, *host_addr);
       return *host_addr;
+    case TK_EQ:
+      return val1 == val2;
+    case TK_AND:
+      return val1 && val2;
     default:
       return 0;
   }

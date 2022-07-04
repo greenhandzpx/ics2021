@@ -42,6 +42,7 @@ static int cmd_c(char *args) {
 
 
 static int cmd_q(char *args) {
+  nemu_state.state = NEMU_QUIT;
   return -1;
 }
 
@@ -90,9 +91,8 @@ static int cmd_x(char *args) {
 }
 
 static int cmd_p(char *args) {
-  char *arg = strtok(args, " ");
   bool success;
-  uint32_t res = expr(arg, &success);
+  uint32_t res = expr(args, &success);
   if (!success) {
     printf("A syntax error in expression.\n");
   }

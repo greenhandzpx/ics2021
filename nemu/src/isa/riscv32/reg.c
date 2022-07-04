@@ -16,6 +16,10 @@ void isa_reg_display() {
 
 word_t isa_reg_str2val(const char *s, bool *success) {
   int idx = 0;
+  if (strcmp("pc", s) == 0) {
+    *success = true;
+    return cpu.pc;
+  }
   for (; idx < 32 && strcmp(regs[idx], s) != 0; ++idx) {}
   if (idx == 32) {
     printf("Cannot find this register.");
