@@ -15,5 +15,14 @@ void isa_reg_display() {
 }
 
 word_t isa_reg_str2val(const char *s, bool *success) {
-  return 0;
+  int idx = 0;
+  for (; idx < 32 && strcmp(regs[idx], s) != 0; ++idx) {}
+  if (idx == 32) {
+    printf("Cannot find this register.");
+    *success = false;
+    return 0;
+  }
+  *success = true;
+  Log("idx:%d", idx);
+  return cpu.gpr[idx]._32;
 }

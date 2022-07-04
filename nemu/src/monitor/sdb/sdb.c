@@ -6,8 +6,13 @@
 #include "sdb.h"
 
 #include "memory/paddr.h"
+// #include "watchpoint.h"
 
 static int is_batch_mode = false;
+
+void watchpoints_display();
+void new_wp(char *expr_arg);
+void free_wp(int NO);
 
 void init_regex();
 void init_wp_pool();
@@ -47,8 +52,7 @@ static int cmd_si(char *args) {
     // we should execute for one step
     cpu_exec(1);
   } else {
-    char *leftover;
-    steps = strtoul(arg, &leftover, 10);
+    steps = strtoul(arg, NULL, 10);
     cpu_exec(steps);
   }
   return 0;
@@ -59,7 +63,7 @@ static int cmd_info(char *args) {
   if (arg && arg[0] == 'r') {
     isa_reg_display();
   } else if (arg && arg[0] == 'w') {
-
+    watchpoints_display();
   } 
   return 0;
 }
@@ -70,31 +74,46 @@ static int cmd_x(char *args) {
     return 0;
   }
 
-  char *leftover;
-  uint64_t cnt = strtoul(arg, &leftover, 10);
+  uint64_t cnt = strtoul(arg, NULL, 10);
   // acquire the next arg(aka addr)
   char *addr_str = strtok(arg + strlen(arg) + 1, " ");
   // transform the addr_str to hex format
-  paddr_t guest_addr = strtoul(addr_str + 2, &leftover, 16);
+  paddr_t guest_addr = strtoul(addr_str + 2, NULL, 16);
   // transform the guest_addr to host_addr
-  uint8_t* host_addr = guest_to_host(guest_addr);
+  uint32_t* host_addr = (uint32_t*)guest_to_host(guest_addr);
 
   for (int i = 0; i < cnt; ++i) {
-    printf("%p\n", host_addr);
+    printf("0x%x\n", *host_addr);
     host_addr += cnt;
   }
   return 0;
 }
 
 static int cmd_p(char *args) {
+  char *arg = strtok(args, " ");
+  bool success;
+  uint32_t res = expr(arg, &success);
+  if (!success) {
+    printf("A syntax error in expression.\n");
+  }
+  printf("%u\n", res);
   return 0;
 }
 
 static int cmd_w(char *args) {
+  char *arg = strtok(args, " ");
+  new_wp(arg);
   return 0;
 }
 
 static int cmd_d(char *args) {
+  char *arg = strtok(args, " ");
+  if (arg == NULL) {
+    return 0;
+  }
+  // get the NO of the watchpoint
+  uint64_t num = strtoul(arg, NULL, 10);
+  free_wp(num);
   return 0;
 }
 

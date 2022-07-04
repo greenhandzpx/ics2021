@@ -7,15 +7,15 @@
 #include <string.h>
 #include <stdlib.h>
 
+#include "memory/paddr.h"
+
 enum {
   TK_NOTYPE = 256, TK_EQ,
-
   /* TODO: Add more token types */
-  TK_ADD,
-  TK_SUB,
-  TK_MUL,
-  TK_DIV,
-  TK_NUM
+  TK_HEX,  // hexadecimal
+  TK_AND,  // &&
+  TK_DEREF, // dereference
+  TK_REG    // reg_name
 };
 
 static struct rule {
@@ -26,15 +26,18 @@ static struct rule {
   /* TODO: Add more rules.
    * Pay attention to the precedence level of different rules.
    */
+  {"0x[0-9]+", TK_HEX}, // hexadecimal number
   {"\\(", '('},
-  {"[0-9]+", 'd'},         // number(greedy match)
-  {"\\/", '/'},         // divide
-  {"\\*", '*'},         // multiply
-  {"\\-", '-'},         // subtract
-  {" +", TK_NOTYPE},    // spaces
-  {"\\+", '+'},         // plus
-  {"==", TK_EQ},        // equal
   {"\\)", ')'},
+  {"[0-9]+", 'd'},      // decimal number(greedy match)
+  {"\\/", '/'},         // divide
+  {"\\*", '*'},         // multiply or dereference
+  {"\\-", '-'},         // subtract
+  {"\\+", '+'},         // plus
+  {"&&", TK_AND},       // &&
+  {" +", TK_NOTYPE},    // spaces
+  {"==", TK_EQ},        // equal
+  {"\\$..|\\$s10|\\$s11", TK_REG}
 };
 
 #define NR_REGEX ARRLEN(rules)
@@ -125,7 +128,36 @@ static bool make_token(char *e) {
             }
             ++nr_token;
             break;
-          
+          case TK_HEX:
+            tokens[nr_token].type = TK_HEX;
+            memset(tokens[nr_token].str, '\0', sizeof(tokens[nr_token].str));
+            // we can just trim the '0x'
+            if (substr_len > 34) {
+              strncpy(tokens[nr_token].str, substr_start+2, 32);
+            } else {
+              strncpy(tokens[nr_token].str, substr_start+2, substr_len-2);
+            }
+            ++nr_token;
+            break;
+          case TK_AND:
+            tokens[nr_token].type = TK_AND;
+            ++nr_token;
+            break;
+          case TK_EQ:
+            tokens[nr_token].type = TK_EQ;
+            ++nr_token;
+            break;
+          case TK_REG:
+            tokens[nr_token].type = TK_REG;
+            memset(tokens[nr_token].str, '\0', sizeof(tokens[nr_token].str));
+            if (substr_len > 32) {
+              strncpy(tokens[nr_token].str, substr_start, 32);
+            } else {
+              strncpy(tokens[nr_token].str, substr_start, substr_len);
+            }
+            ++nr_token;
+          case TK_NOTYPE:
+            break;
           default: TODO();
         }
 
@@ -180,10 +212,27 @@ uint32_t eval(int left, int right) {
 
 
   if (left == right) {
-    assert(tokens[left].type == 'd');
-    Log("num: %s", tokens[left].str);
-    return strtoul(tokens[left].str, NULL, 10);
+    assert(tokens[left].type == 'd' || tokens[left].type == TK_HEX ||
+            tokens[left].type == TK_REG);
+    if (tokens[left].type == 'd') {
+      Log("num: %s", tokens[left].str);
+      return strtoul(tokens[left].str, NULL, 10);
+
+    } else if (tokens[left].type == TK_HEX) {
+      return strtoul(tokens[left].str, NULL, 16);
+
+    } else {
+      bool success;
+      // fetch the val in the reg
+      // remove the '$' 
+      uint32_t res = isa_reg_str2val(tokens[left].str+1, &success);
+      if (!success) {
+        return 0;
+      }
+      return res;
+    }
   }
+
 
   int res = check_parantheses(left, right);
   if (res == 0) {
@@ -196,7 +245,14 @@ uint32_t eval(int left, int right) {
   }
 
   // traverse the tokens and find the main operator
-  int level = 2, loc = -1, op_type;
+  /**
+   * level 1: ()
+   * level 2: *(dereference)
+   * level 3: * /
+   * level 4: + -
+   */
+  
+  int level = 1, loc = -1, op_type;
   for (int i = left; i < right; ++i) {
     if (tokens[i].type == '(') {
       // we should pass all the tokens wrapped in a pair of brackets
@@ -218,10 +274,15 @@ uint32_t eval(int left, int right) {
     if (tokens[i].type == '+' || tokens[i].type == '-') {
       // we should set the last lowest level operator as main operator
       op_type = tokens[i].type;
-      level = 1;
+      level = 4;
       loc = i;
-    } else if (level == 2 && (tokens[i].type == '*' || tokens[i].type == '/')) {
+    } else if (level < 4 && (tokens[i].type == '*' || tokens[i].type == '/')) {
       op_type = tokens[i].type;
+      level = 3;
+      loc = i; 
+    } else if (level < 3 && tokens[i].type == TK_DEREF) {
+      op_type = tokens[i].type;
+      level = 2;
       loc = i; 
     }
   } 
@@ -242,6 +303,11 @@ uint32_t eval(int left, int right) {
       return val1 * val2;
     case '/':
       return val1 / val2; 
+    case TK_DEREF:
+      // transform the guest_addr to host_addr
+      uint32_t* host_addr = (uint32_t*)guest_to_host(val2);
+      Log("deref: addr:%u, val:%u", val2, *host_addr);
+      return *host_addr;
     default:
       return 0;
   }
@@ -249,11 +315,20 @@ uint32_t eval(int left, int right) {
 
 word_t expr(char *e, bool *success) {
   if (!make_token(e)) {
-    // *success = false;
-    // return 0;
+    *success = false;
+    return 0;
   }
 
+  *success = true;
   /* TODO: Insert codes to evaluate the expression. */
-  Log("nr_token: %d", nr_token);
+
+  for (int i = 0; i < nr_token; i ++) {
+    if (tokens[i].type == '*' && 
+      (i == 0 || (tokens[i - 1].type != ')' && tokens[i-1].type != 'd' &&
+      tokens[i-1].type != TK_HEX) ) ) {
+      tokens[i].type = TK_DEREF;
+    }
+  }
+
   return eval(0, nr_token - 1);
 }

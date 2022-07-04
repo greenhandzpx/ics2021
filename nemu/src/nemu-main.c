@@ -45,7 +45,9 @@ int main(int argc, char *argv[]) {
   //   memset(buf, '\0', sizeof(buf));
   //   memset(std_res_buf, '\0', sizeof(std_res_buf));
   // }
-
+  bool success;
+  uint32_t test_res = expr("", &success);
+  printf("res: %u\n", test_res);
   engine_start();
 
   return is_exit_status_bad();
