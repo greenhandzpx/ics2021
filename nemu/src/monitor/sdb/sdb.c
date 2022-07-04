@@ -1,8 +1,11 @@
 #include <isa.h>
 #include <cpu/cpu.h>
+#include <stdlib.h>
 #include <readline/readline.h>
 #include <readline/history.h>
 #include "sdb.h"
+
+#include "memory/paddr.h"
 
 static int is_batch_mode = false;
 
@@ -37,6 +40,64 @@ static int cmd_q(char *args) {
   return -1;
 }
 
+static int cmd_si(char *args) {
+  char *arg = strtok(args, " ");
+  uint64_t steps;
+  if (arg == NULL) {
+    // we should execute for one step
+    cpu_exec(1);
+  } else {
+    char *leftover;
+    steps = strtoul(arg, &leftover, 10);
+    cpu_exec(steps);
+  }
+  return 0;
+}
+
+static int cmd_info(char *args) {
+  char *arg = strtok(args, " ");
+  if (arg && arg[0] == 'r') {
+    isa_reg_display();
+  } else if (arg && arg[0] == 'w') {
+
+  } 
+  return 0;
+}
+ 
+static int cmd_x(char *args) {
+  char *arg = strtok(args, " ");
+  if (arg == NULL) {
+    return 0;
+  }
+
+  char *leftover;
+  uint64_t cnt = strtoul(arg, &leftover, 10);
+  // acquire the next arg(aka addr)
+  char *addr_str = strtok(arg + strlen(arg) + 1, " ");
+  // transform the addr_str to hex format
+  paddr_t guest_addr = strtoul(addr_str + 2, &leftover, 16);
+  // transform the guest_addr to host_addr
+  uint8_t* host_addr = guest_to_host(guest_addr);
+
+  for (int i = 0; i < cnt; ++i) {
+    printf("%p\n", host_addr);
+    host_addr += cnt;
+  }
+  return 0;
+}
+
+static int cmd_p(char *args) {
+  return 0;
+}
+
+static int cmd_w(char *args) {
+  return 0;
+}
+
+static int cmd_d(char *args) {
+  return 0;
+}
+
 static int cmd_help(char *args);
 
 static struct {
@@ -49,7 +110,12 @@ static struct {
   { "q", "Exit NEMU", cmd_q },
 
   /* TODO: Add more commands */
-
+  { "si", "Execute for N steps", cmd_si},
+  { "info", "Print the registers or watchpoints", cmd_info},
+  { "x", "Scan the memory", cmd_x},
+  { "p", "Predicate", cmd_p},
+  { "w", "Set a watchpoint", cmd_w},
+  { "d", "Delete a watchpoint", cmd_d},
 };
 
 #define NR_CMD ARRLEN(cmd_table)

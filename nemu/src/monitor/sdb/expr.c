@@ -4,12 +4,18 @@
  * Type 'man regex' for more information about POSIX regex functions.
  */
 #include <regex.h>
+#include <string.h>
+#include <stdlib.h>
 
 enum {
   TK_NOTYPE = 256, TK_EQ,
 
   /* TODO: Add more token types */
-
+  TK_ADD,
+  TK_SUB,
+  TK_MUL,
+  TK_DIV,
+  TK_NUM
 };
 
 static struct rule {
@@ -20,10 +26,15 @@ static struct rule {
   /* TODO: Add more rules.
    * Pay attention to the precedence level of different rules.
    */
-
+  {"\\(", '('},
+  {"[0-9]+", 'd'},         // number(greedy match)
+  {"\\/", '/'},         // divide
+  {"\\*", '*'},         // multiply
+  {"\\-", '-'},         // subtract
   {" +", TK_NOTYPE},    // spaces
   {"\\+", '+'},         // plus
   {"==", TK_EQ},        // equal
+  {"\\)", ')'},
 };
 
 #define NR_REGEX ARRLEN(rules)
@@ -52,7 +63,7 @@ typedef struct token {
   char str[32];
 } Token;
 
-static Token tokens[32] __attribute__((used)) = {};
+static Token tokens[96] __attribute__((used)) = {};
 static int nr_token __attribute__((used))  = 0;
 
 static bool make_token(char *e) {
@@ -80,6 +91,41 @@ static bool make_token(char *e) {
          */
 
         switch (rules[i].token_type) {
+          case '+':
+            tokens[nr_token].type = '+';
+            ++nr_token;
+            break;
+          case '-':
+            tokens[nr_token].type = '-';
+            ++nr_token;
+            break;
+          case '*':
+            tokens[nr_token].type = '*';
+            ++nr_token;
+            break;
+          case '/':
+            tokens[nr_token].type = '/';
+            ++nr_token;
+            break;
+          case '(':
+            tokens[nr_token].type = '(';
+            ++nr_token;
+            break;
+          case ')':
+            tokens[nr_token].type = ')';
+            ++nr_token;
+            break;
+          case 'd':
+            tokens[nr_token].type = 'd';
+            memset(tokens[nr_token].str, '\0', sizeof(tokens[nr_token].str));
+            if (substr_len > 32) {
+              strncpy(tokens[nr_token].str, substr_start, 32);
+            } else {
+              strncpy(tokens[nr_token].str, substr_start, substr_len);
+            }
+            ++nr_token;
+            break;
+          
           default: TODO();
         }
 
@@ -97,14 +143,117 @@ static bool make_token(char *e) {
 }
 
 
-word_t expr(char *e, bool *success) {
-  if (!make_token(e)) {
-    *success = false;
+/**
+ * @return 0 --- success, 1 --- fail but legal, 2 --- illegal
+ */
+int check_parantheses(int left, int right) {
+  if (tokens[left].type != '(' || tokens[right].type != ')') {
+    Log("no paran 1");
+    return 1;
+  }
+  int paren_cnt = 0;
+  int stk[10000];
+  for (int i = left; i <= right; ++i) {
+    if (tokens[i].type == '(') {
+      stk[paren_cnt++] = i;
+    } else if (tokens[i].type == ')') {
+      if (paren_cnt <= 0) {
+        return 2;
+      }
+      --paren_cnt; 
+    }
+  }
+  if (paren_cnt != 0) {
+    return 2;
+  }
+  if (stk[0] != left) {
+    Log("no paran 2, stk[0]:%d", stk[0]);
+    return 1;
+  }
+  return 0;
+}
+
+uint32_t eval(int left, int right) {
+  if (left > right) {
     return 0;
   }
 
-  /* TODO: Insert codes to evaluate the expression. */
-  TODO();
 
-  return 0;
+  if (left == right) {
+    assert(tokens[left].type == 'd');
+    Log("num: %s", tokens[left].str);
+    return strtoul(tokens[left].str, NULL, 10);
+  }
+
+  int res = check_parantheses(left, right);
+  if (res == 0) {
+    // the whole predicate is wrapped in a pair of brackets
+    Log("find a pair of wrapped brackets");
+    return eval(left+1, right-1);
+  } else if (res == 2) {
+    // illegal parantheses 
+    return 0;
+  }
+
+  // traverse the tokens and find the main operator
+  int level = 2, loc = -1, op_type;
+  for (int i = left; i < right; ++i) {
+    if (tokens[i].type == '(') {
+      // we should pass all the tokens wrapped in a pair of brackets
+      int k = i;
+      int cnt = 0;
+      for (; k < right; ++k) {
+        if (tokens[k].type == '(') {
+          ++cnt;
+        } else if (tokens[k].type == ')') {
+          --cnt;
+          if (cnt == 0) {
+            break;
+          }
+        }
+      }
+      i = k;
+      continue;
+    }
+    if (tokens[i].type == '+' || tokens[i].type == '-') {
+      // we should set the last lowest level operator as main operator
+      op_type = tokens[i].type;
+      level = 1;
+      loc = i;
+    } else if (level == 2 && (tokens[i].type == '*' || tokens[i].type == '/')) {
+      op_type = tokens[i].type;
+      loc = i; 
+    }
+  } 
+  if (loc == -1) {
+    return 0;
+  }
+  Log("main op idx: %d", loc);
+  uint32_t val1 = eval(left, loc - 1);
+  Log("left val:%u", val1);
+  uint32_t val2 = eval(loc + 1, right);
+  Log("right val:%u", val2);
+  switch (op_type) {
+    case '+':
+      return val1 + val2; 
+    case '-':
+      return val1 - val2;
+    case '*':
+      return val1 * val2;
+    case '/':
+      return val1 / val2; 
+    default:
+      return 0;
+  }
+}
+
+word_t expr(char *e, bool *success) {
+  if (!make_token(e)) {
+    // *success = false;
+    // return 0;
+  }
+
+  /* TODO: Insert codes to evaluate the expression. */
+  Log("nr_token: %d", nr_token);
+  return eval(0, nr_token - 1);
 }

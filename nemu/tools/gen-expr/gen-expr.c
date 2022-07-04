@@ -16,8 +16,52 @@ static char *code_format =
 "  return 0; "
 "}";
 
+int cnt = 0; 
+
+int choose(int bound) {
+  return rand() % bound;
+}
+
+static void gen_num() {
+  // uint32_t *dummy = &buf[cnt];
+  // *dummy = rand() % 10000;
+  sprintf(&buf[cnt], "%u", rand() % 1000 + 1);
+  // printf("gen a num:%s\n", &buf[cnt]);
+  while (buf[cnt] != '\0') {
+    ++cnt;
+  }
+}
+
+static void gen(char sym) {
+  sprintf(&buf[cnt], "%c", sym);
+  ++cnt;
+}
+
+static void gen_rand_op() {
+  switch (choose(4)) {
+    case 0: gen('+'); break;
+    case 1: gen('-'); break;
+    case 2: gen('*'); break;
+    default: gen('/'); break;
+  }
+}
+
 static void gen_rand_expr() {
-  buf[0] = '\0';
+  // printf("cnt:%d\n", cnt);
+  // if (cnt > 60) {
+  //   buf[cnt] = '\0';
+  //   return;
+  // }
+  if (cnt > 60) {
+    gen_num();
+    return;
+  }
+
+  switch (choose(3)) {
+    case 0: gen_num(); break;
+    case 1: gen('('); gen_rand_expr(); gen(')'); break;
+    default: gen_rand_expr(); gen_rand_op(); gen_rand_expr(); break;
+  }
 }
 
 int main(int argc, char *argv[]) {
@@ -29,6 +73,8 @@ int main(int argc, char *argv[]) {
   }
   int i;
   for (i = 0; i < loop; i ++) {
+    memset(buf, '\0', 65536);
+    cnt = 0;
     gen_rand_expr();
 
     sprintf(code_buf, code_format, buf);
