@@ -26,6 +26,8 @@ static inline def_DHelper(I) {
   decode_op_r(s, id_src1, s->isa.instr.i.rs1, false);
   decode_op_i(s, id_src2, (sword_t)s->isa.instr.i.simm11_0, false);
   decode_op_r(s, id_dest, s->isa.instr.i.rd, true);
+  Log("I-type: src2-imm: %lx", s->src2.imm);
+  Log("I-type: src1: %lx", *s->src1.preg);
 }
 
 static inline def_DHelper(U) {
@@ -38,6 +40,15 @@ static inline def_DHelper(S) {
   sword_t simm = (s->isa.instr.s.simm11_5 << 5) | s->isa.instr.s.imm4_0;
   decode_op_i(s, id_src2, simm, false);
   decode_op_r(s, id_dest, s->isa.instr.s.rs2, false);
+}
+
+static def_DHelper(J) {
+  sword_t simm = (s->isa.instr.j.simm20 << 20 | 
+                  s->isa.instr.j.simm19_12 << 12 |
+                  s->isa.instr.j.simm11 << 11 |
+                  s->isa.instr.j.simm10_1 << 1);
+  decode_op_i(s, id_src1, simm, true);
+  decode_op_r(s, id_dest, s->isa.instr.j.rd, true);
 }
 
 def_THelper(load) {
@@ -55,6 +66,11 @@ def_THelper(main) {
   def_INSTR_IDTAB("??????? ????? ????? ??? ????? 01000 11", S     , store);
   def_INSTR_IDTAB("??????? ????? ????? ??? ????? 00101 11", U     , auipc);
   def_INSTR_TAB  ("??????? ????? ????? ??? ????? 11010 11",         nemu_trap);
+  // add new patterns
+  def_INSTR_IDTAB("??????? ????? 00000 000 ????? 00100 11", I     , li);
+  def_INSTR_IDTAB("??????? ????? ????? 000 ????? 00100 11", I     , addi);
+  def_INSTR_IDTAB("??????? ????? ????? ??? ????? 11011 11", J     , jal);
+  def_INSTR_IDTAB("??????? ????? 00001 000 00000 11001 11", I     , ret);
   return table_inv(s);
 };
 

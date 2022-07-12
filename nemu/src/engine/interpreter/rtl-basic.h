@@ -31,6 +31,13 @@ def_rtl_compute_reg_imm(sll)
 def_rtl_compute_reg_imm(srl)
 def_rtl_compute_reg_imm(sra)
 
+
+// static inline def_rtl(auipc, rtlreg_t *dest, word_t imm) {
+//   // *dest = s->pc + imm; 
+//   Log("auipc: imm: %lx", imm);
+//   *dest = imm; 
+// }
+
 #ifdef CONFIG_ISA64
 def_rtl_compute_reg_imm(addw)
 def_rtl_compute_reg_imm(subw)
@@ -106,6 +113,8 @@ static inline def_rtl(lm, rtlreg_t *dest, const rtlreg_t* addr, word_t offset, i
 }
 
 static inline def_rtl(sm, const rtlreg_t *src1, const rtlreg_t* addr, word_t offset, int len) {
+  Log("base addr: %lx", *addr);
+  Log("off: %lx", offset);
   vaddr_write(*addr + offset, len, *src1);
 }
 
@@ -147,6 +156,18 @@ static inline def_rtl(j, vaddr_t target) {
 }
 
 static inline def_rtl(jr, rtlreg_t *target) {
+  s->dnpc = *target;
+}
+
+static inline def_rtl(jal, vaddr_t target, rtlreg_t* dest) {
+  *(vaddr_t *)dest = s->snpc;
+  Log("ra: %lx, targe: %lx", *dest, target);
+  s->dnpc = target;
+}
+
+// TODO
+static inline def_rtl(jalr, rtlreg_t *target, rtlreg_t* dest) {
+  *(vaddr_t *)dest = s->snpc;
   s->dnpc = *target;
 }
 
